@@ -1,26 +1,173 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Variante dark usando classe .dark */
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ===== TEMA CLARO - Moda KL ===== */
+:root {
+  --background: #FAF7F5;
+  --foreground: #2A1F1A;
+  --card: #FFFFFF;
+  --card-foreground: #2A1F1A;
+  --popover: #FFFFFF;
+  --popover-foreground: #2A1F1A;
+  --primary: #E8839A;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E8D5B7;
+  --secondary-foreground: #2A1F1A;
+  --muted: #F0E8E2;
+  --muted-foreground: #6B5B4F;
+  --accent: #D4A574;
+  --accent-foreground: #2A1F1A;
+  --destructive: #E53E3E;
+  --border: #E5DAD0;
+  --input: #E5DAD0;
+  --ring: #E8839A;
+  --chart-1: #E8839A;
+  --chart-2: #D4A574;
+  --chart-3: #E8D5B7;
+  --chart-4: #A78B6A;
+  --chart-5: #F0E8E2;
+  --radius: 0.875rem;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #2A1F1A;
+  --sidebar-primary: #E8839A;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F0E8E2;
+  --sidebar-accent-foreground: #2A1F1A;
+  --sidebar-border: #E5DAD0;
+  --sidebar-ring: #E8839A;
+}
+
+/* ===== TEMA ESCURO - Moda KL ===== */
+.dark {
+  --background: #15131A;
+  --foreground: #F5EDE6;
+  --card: #1F1B22;
+  --card-foreground: #F5EDE6;
+  --popover: #1F1B22;
+  --popover-foreground: #F5EDE6;
+  --primary: #FF7A95;
+  --primary-foreground: #1A0E13;
+  --secondary: #2D2620;
+  --secondary-foreground: #F5EDE6;
+  --muted: #1F1B22;
+  --muted-foreground: #A89B8F;
+  --accent: #E8B872;
+  --accent-foreground: #1A0E13;
+  --destructive: #FC5050;
+  --border: #2A2530;
+  --input: #2A2530;
+  --ring: #FF7A95;
+  --chart-1: #FF7A95;
+  --chart-2: #E8B872;
+  --chart-3: #2D2620;
+  --chart-4: #A89B8F;
+  --chart-5: #1F1B22;
+  --sidebar: #1F1B22;
+  --sidebar-foreground: #F5EDE6;
+  --sidebar-primary: #FF7A95;
+  --sidebar-primary-foreground: #1A0E13;
+  --sidebar-accent: #2D2620;
+  --sidebar-accent-foreground: #F5EDE6;
+  --sidebar-border: #2A2530;
+  --sidebar-ring: #FF7A95;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ===== PWA Safe Area & Utilitários ===== */
+@layer utilities {
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-left {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .safe-right {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+/* Transições suaves entre temas */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Touch targets mínimos */
+button, a, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Scroll suave */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevenir zoom em inputs no iOS */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
 }

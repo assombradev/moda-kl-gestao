@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Moda KL Gestão
 
-## Getting Started
+Sistema interno de controle de estoque para a loja Moda KL (moda praia feminina). PWA mobile-first otimizado para iOS, com tema claro/escuro, autenticação por PIN e gestão completa de produtos, variações e movimentações de estoque.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Framework**: Next.js 15 (App Router) + TypeScript
+- **Estilização**: Tailwind CSS + shadcn/ui + Framer Motion
+- **Banco de dados**: Supabase (PostgreSQL + Storage)
+- **Autenticação**: PIN de 4 dígitos com JWT em cookie httpOnly
+- **Deploy**: Vercel
+
+## Funcionalidades
+
+- Login por PIN para 3 usuárias (Assombradox, Karen, Luanna)
+- Dashboard com métricas: peças em estoque, modelos cadastrados, alertas de estoque baixo
+- Cadastro de produtos com foto, nome, categoria, modelo, custo e variações (cor × tamanho × quantidade)
+- SKU automático no formato `BK001-AZUL_MARINHO-M`
+- Autocomplete crescente de modelos cadastrados durante o uso
+- Cores pré-cadastradas + opção de criar cores customizadas com color picker
+- Botões +/− para ajuste rápido de quantidade na lista de produtos
+- Histórico completo de movimentações (quem alterou, quando, antes/depois)
+- Tema claro/escuro/sistema com persistência
+- PWA instalável no iPhone
+
+## Como rodar localmente
+
+1. Clone o repositório
+2. Instale as dependências: `npm install`
+3. Crie um arquivo `.env.local` na raiz com:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+JWT_SECRET=
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Rode: `npm run dev`
+5. Abra `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy na Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Conecte o repositório à Vercel
+2. Configure as 3 variáveis de ambiente no painel da Vercel
+3. Deploy automático a cada push na branch principal
 
-## Learn More
+## Trocar PIN de uma usuária
 
-To learn more about Next.js, take a look at the following resources:
+Cada usuária pode trocar o próprio PIN dentro do app, em **Configurações → Trocar PIN**.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Licença
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Uso interno. Não distribuir.
