@@ -49,6 +49,9 @@ export default function NovoProdutoPage() {
       formData.append("category", data.category);
       formData.append("model", data.model);
       formData.append("cost", data.cost);
+      formData.append("price", data.price);
+      formData.append("description", data.description);
+      formData.append("display_order", data.displayOrder);
       formData.append("variants", JSON.stringify(data.variants));
       if (data.photoFile) {
         formData.append("photo", data.photoFile);

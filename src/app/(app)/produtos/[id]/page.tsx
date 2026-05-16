@@ -153,6 +153,10 @@ export default function ProductDetailPage() {
       if (data.category) updates.category = data.category;
       if (data.model) updates.model = data.model;
       if (data.cost) updates.cost_brl = parseFloat(data.cost.replace(',', '.'));
+      updates.price_brl = data.price ? parseFloat(data.price.replace(',', '.')) : null;
+      updates.description = data.description || null;
+      const parsedOrder = parseInt(data.displayOrder, 10);
+      updates.display_order = Number.isFinite(parsedOrder) ? parsedOrder : 0;
 
       const res = await fetch(`/api/products/${productId}`, {
         method: "PATCH",
@@ -168,6 +172,9 @@ export default function ProductDetailPage() {
           category: data.category,
           model: data.model,
           cost_brl: data.cost ? parseFloat(data.cost.replace(',', '.')) : prev.cost_brl,
+          price_brl: updates.price_brl,
+          description: updates.description,
+          display_order: updates.display_order,
         }));
         setShowSuccess(true);
       } else {
@@ -310,6 +317,9 @@ export default function ProductDetailPage() {
           category: product.category || '',
           model: product.model || '',
           cost: product.cost_brl ? String(product.cost_brl).replace('.', ',') : '',
+          price: product.price_brl != null ? String(product.price_brl).replace('.', ',') : '',
+          description: product.description || '',
+          displayOrder: product.display_order != null ? String(product.display_order) : '0',
           photoUrl: product.photo_url || undefined,
           variants: product.variants || [],
         }}

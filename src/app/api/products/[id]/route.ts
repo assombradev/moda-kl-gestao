@@ -72,7 +72,7 @@ export async function PATCH(
     const updates = await request.json()
 
     // Campos permitidos para atualização
-    const allowedFields = ['name', 'category', 'model', 'cost_brl', 'photo_url']
+    const allowedFields = ['name', 'category', 'model', 'cost_brl', 'photo_url', 'price_brl', 'description', 'display_order']
     const filteredUpdates: Record<string, unknown> = {}
 
     for (const key of allowedFields) {

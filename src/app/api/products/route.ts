@@ -112,8 +112,14 @@ export async function POST(request: NextRequest) {
     const category = formData.get('category') as string
     const model = formData.get('model') as string
     const costStr = formData.get('cost') as string
+    const priceStr = formData.get('price') as string | null
+    const description = (formData.get('description') as string | null) || null
+    const displayOrderStr = formData.get('display_order') as string | null
     const variantsStr = formData.get('variants') as string
     const cost_brl = costStr ? parseFloat(costStr.replace(',', '.')) : null
+    const price_brl = priceStr ? parseFloat(priceStr.replace(',', '.')) : null
+    const parsedDisplayOrder = displayOrderStr ? parseInt(displayOrderStr, 10) : 0
+    const display_order = Number.isFinite(parsedDisplayOrder) ? parsedDisplayOrder : 0
     const variants = variantsStr ? JSON.parse(variantsStr) : []
 
     // Validações básicas
@@ -194,6 +200,9 @@ export async function POST(request: NextRequest) {
         category,
         model,
         cost_brl: cost_brl || null,
+        price_brl,
+        description,
+        display_order,
         photo_url: photoUrl,
         sequential_number: sequentialNumber,
         sku_prefix: skuPrefix,

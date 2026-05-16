@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Plus, Trash2, Upload, X, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,9 @@ export interface ProductFormData {
   category: string;
   model: string;
   cost: string;
+  price: string;
+  description: string;
+  displayOrder: string;
   photoUrl?: string;
   photoFile?: File;
   variants: Variant[];
@@ -66,6 +70,9 @@ export function ProductForm({
       category: "",
       model: "",
       cost: "",
+      price: "",
+      description: "",
+      displayOrder: "0",
       variants: [],
     }
   );
@@ -108,6 +115,17 @@ export function ProductForm({
     // Remove tudo exceto números e vírgula
     const cleaned = value.replace(/[^\d,]/g, "");
     setForm((prev) => ({ ...prev, cost: cleaned }));
+  }
+
+  function handlePriceChange(value: string) {
+    const cleaned = value.replace(/[^\d,]/g, "");
+    setForm((prev) => ({ ...prev, price: cleaned }));
+  }
+
+  function handleDisplayOrderChange(value: string) {
+    // Apenas inteiros >= 0 (sinal de menos e negativos são ignorados)
+    const cleaned = value.replace(/[^\d]/g, "");
+    setForm((prev) => ({ ...prev, displayOrder: cleaned }));
   }
 
   // Autocomplete de modelo
@@ -438,6 +456,70 @@ export function ProductForm({
               )}
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Dados do catálogo */}
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-5">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Dados do catálogo</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Informações que aparecem para a cliente no catálogo público.
+          </p>
+        </div>
+
+        {/* Preço de venda */}
+        <div className="space-y-2">
+          <Label htmlFor="price">Preço de venda</Label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-base">
+              R$
+            </span>
+            <Input
+              id="price"
+              value={form.price}
+              onChange={(e) => handlePriceChange(e.target.value)}
+              placeholder="0,00"
+              className="h-12 text-base pl-11"
+              inputMode="decimal"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Valor que aparece para a cliente no catálogo.
+          </p>
+        </div>
+
+        {/* Descrição */}
+        <div className="space-y-2">
+          <Label htmlFor="description">Descrição</Label>
+          <Textarea
+            id="description"
+            value={form.description}
+            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+            rows={5}
+            placeholder="Caimento, tecido, modelagem..."
+            className="resize-y"
+          />
+          <p className="text-xs text-muted-foreground">
+            Texto que aparece para a cliente no catálogo. Descreva caimento, tecido, modelagem.
+          </p>
+        </div>
+
+        {/* Ordem de exibição */}
+        <div className="space-y-2">
+          <Label htmlFor="display-order">Ordem de exibição</Label>
+          <Input
+            id="display-order"
+            value={form.displayOrder}
+            onChange={(e) => handleDisplayOrderChange(e.target.value)}
+            placeholder="0"
+            className="h-12 text-base"
+            inputMode="numeric"
+            min="0"
+          />
+          <p className="text-xs text-muted-foreground">
+            Quanto maior o número, mais alto o produto aparece no catálogo. Use 0 para ordem padrão.
+          </p>
         </div>
       </div>
 
