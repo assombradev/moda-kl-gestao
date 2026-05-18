@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase-server'
 import { requireAuth } from '@/lib/auth'
+import { generateUniqueSlug } from '@/lib/slug'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -79,6 +80,11 @@ export async function PATCH(
       if (key in updates) {
         filteredUpdates[key] = updates[key]
       }
+    }
+
+    // Regera o slug sempre que o nome for alterado
+    if ('name' in updates && updates.name) {
+      filteredUpdates.slug = await generateUniqueSlug(updates.name, supabase, id)
     }
 
     if (Object.keys(filteredUpdates).length === 0) {

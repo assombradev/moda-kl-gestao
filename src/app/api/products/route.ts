@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase-server'
 import { requireAuth } from '@/lib/auth'
 import { SKU_PREFIXES } from '@/lib/constants'
 import type { Category } from '@/lib/constants'
+import { generateUniqueSlug } from '@/lib/slug'
 
 export async function GET(request: NextRequest) {
   try {
@@ -192,6 +193,8 @@ export async function POST(request: NextRequest) {
       .from('models')
       .upsert({ name: model, last_used_at: new Date().toISOString() }, { onConflict: 'name' })
 
+    const slug = await generateUniqueSlug(name, supabase)
+
     // Cria o produto
     const { data: product, error: productError } = await supabase
       .from('products')
@@ -203,6 +206,7 @@ export async function POST(request: NextRequest) {
         price_brl,
         description,
         display_order,
+        slug,
         photo_url: photoUrl,
         sequential_number: sequentialNumber,
         sku_prefix: skuPrefix,
