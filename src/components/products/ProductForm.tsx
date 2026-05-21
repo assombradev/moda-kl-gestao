@@ -1,20 +1,21 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Plus, Trash2, Upload, X, Check } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Upload, X, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Accordion } from "@/components/ui/accordion";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { VariantColorGroup } from "@/components/products/VariantColorGroup";
+import { SIZES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-/**
- * Formulário completo de criação/edição de produto.
- * Inclui upload de foto, seleção de categoria (radio buttons grandes),
- * modelo com autocomplete, custo com máscara R$, tabela de variantes.
- */
-
-// Categorias fixas da loja (valores devem bater com o CHECK do banco)
 const CATEGORIES = [
   { id: "Biquíni", label: "Biquíni", emoji: "👙" },
   { id: "Saída", label: "Saída", emoji: "👗" },
@@ -45,21 +46,94 @@ export interface ProductFormData {
   variants: Variant[];
 }
 
+interface ColorProp {
+  id: string;
+  name: string;
+  hex: string;
+  is_gradient?: boolean;
+  gradient_hex_2?: string | null;
+}
+
+interface EmptyColor {
+  colorId: string;
+  colorName: string;
+  colorHex: string;
+  isGradient: boolean;
+  gradientHex2: string | null;
+}
+
+interface ColorGroup {
+  colorId: string;
+  colorName: string;
+  colorHex: string;
+  isGradient: boolean;
+  gradientHex2: string | null;
+  sizes: Array<{ size: string; quantity: number | null; variantId: string | null }>;
+}
+
 interface ProductFormProps {
   initialData?: ProductFormData;
-  models?: string[]; // Lista de modelos para autocomplete
-  colors?: { id: string; name: string; hex: string }[];
+  models?: string[];
+  colors?: ColorProp[];
   sizes?: string[];
   onSubmit: (data: ProductFormData) => Promise<void>;
-  onAddColor?: (name: string, hex: string) => Promise<{ id: string; name: string; hex: string } | null>;
+  onAddColor?: (
+    name: string,
+    hex: string
+  ) => Promise<{ id: string; name: string; hex: string } | null>;
   isLoading?: boolean;
+}
+
+// Converte array plano de Variant em grupos por cor para renderização.
+// Função pura, sem side effects.
+function groupVariantsByColor(
+  variants: Variant[],
+  emptyColors: EmptyColor[],
+  allColors: ColorProp[],
+  allSizes: string[]
+): ColorGroup[] {
+  const groups = new Map<string, ColorGroup>();
+
+  for (const v of variants) {
+    if (!groups.has(v.color_id)) {
+      const full = allColors.find((c) => c.id === v.color_id);
+      groups.set(v.color_id, {
+        colorId: v.color_id,
+        colorName: v.color,
+        colorHex: v.colorHex,
+        isGradient: full?.is_gradient ?? false,
+        gradientHex2: full?.gradient_hex_2 ?? null,
+        sizes: allSizes.map((s) => ({ size: s, quantity: null, variantId: null })),
+      });
+    }
+    const group = groups.get(v.color_id)!;
+    const idx = group.sizes.findIndex((s) => s.size === v.size);
+    if (idx >= 0) {
+      group.sizes[idx] = { size: v.size, quantity: v.quantity, variantId: v.id };
+    }
+  }
+
+  for (const ec of emptyColors) {
+    if (!groups.has(ec.colorId)) {
+      groups.set(ec.colorId, {
+        colorId: ec.colorId,
+        colorName: ec.colorName,
+        colorHex: ec.colorHex,
+        isGradient: ec.isGradient,
+        gradientHex2: ec.gradientHex2,
+        sizes: allSizes.map((s) => ({ size: s, quantity: null, variantId: null })),
+      });
+    }
+  }
+
+  return Array.from(groups.values());
 }
 
 export function ProductForm({
   initialData,
   models = [],
   colors = [],
-  sizes = ["PP", "P", "M", "G", "GG", "Tamanho Único"],
+  sizes = [...SIZES],
   onSubmit,
   onAddColor,
   isLoading = false,
@@ -83,13 +157,16 @@ export function ProductForm({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Estado do mini color picker para "Outra cor"
-  const [showColorPicker, setShowColorPicker] = useState<string | null>(null); // variant.id que abriu o picker
+  // Cores adicionadas via popover que ainda não têm nenhuma variant criada
+  const [addedEmptyColors, setAddedEmptyColors] = useState<EmptyColor[]>([]);
+
+  // Estado do popover de adicionar cor
+  const [addColorOpen, setAddColorOpen] = useState(false);
+  const [showCreateColor, setShowCreateColor] = useState(false);
   const [newColorName, setNewColorName] = useState("");
   const [newColorHex, setNewColorHex] = useState("#E8839A");
   const [savingColor, setSavingColor] = useState(false);
 
-  // Atualiza o form quando initialData carrega pela primeira vez (da API)
   const [initialized, setInitialized] = useState(!!initialData);
   useEffect(() => {
     if (initialData && !initialized) {
@@ -99,7 +176,6 @@ export function ProductForm({
     }
   }, [initialData, initialized]);
 
-  // Handler para upload de foto
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) {
@@ -110,9 +186,7 @@ export function ProductForm({
     }
   }
 
-  // Máscara para valor em R$
   function handleCostChange(value: string) {
-    // Remove tudo exceto números e vírgula
     const cleaned = value.replace(/[^\d,]/g, "");
     setForm((prev) => ({ ...prev, cost: cleaned }));
   }
@@ -123,12 +197,10 @@ export function ProductForm({
   }
 
   function handleDisplayOrderChange(value: string) {
-    // Apenas inteiros >= 0 (sinal de menos e negativos são ignorados)
     const cleaned = value.replace(/[^\d]/g, "");
     setForm((prev) => ({ ...prev, displayOrder: cleaned }));
   }
 
-  // Autocomplete de modelo
   function handleModelChange(value: string) {
     setForm((prev) => ({ ...prev, model: value }));
     if (value.length > 0) {
@@ -142,41 +214,172 @@ export function ProductForm({
     }
   }
 
-  // Adicionar variante
-  function addVariant() {
-    const newVariant: Variant = {
-      id: crypto.randomUUID(),
-      color_id: colors[0]?.id || "",
-      color: colors[0]?.name || "",
-      colorHex: colors[0]?.hex || "#E8839A",
-      size: sizes[0] || "M",
-      quantity: 1,
-    };
-    setForm((prev) => ({ ...prev, variants: [...prev.variants, newVariant] }));
+  // --- Handlers de variantes ---
+
+  function handleSizeQuantityChange(
+    colorId: string,
+    colorName: string,
+    colorHex: string,
+    size: string,
+    newQty: number | null
+  ) {
+    const currentVariants = form.variants;
+    const existingIdx = currentVariants.findIndex(
+      (v) => v.color_id === colorId && v.size === size
+    );
+
+    // Caso de remoção (input limpo): trata fora do updater para poder
+    // chamar setAddedEmptyColors logo depois com dados da variant removida
+    if (existingIdx >= 0 && newQty === null) {
+      const removedVariant = currentVariants[existingIdx];
+      const remainingForColor = currentVariants.filter(
+        (v) => v.color_id === colorId && v.size !== size
+      );
+
+      setForm((prev) => ({
+        ...prev,
+        variants: prev.variants.filter(
+          (v) => !(v.color_id === colorId && v.size === size)
+        ),
+      }));
+
+      // Se a cor ficou sem variants, mantém o grupo visível no Accordion
+      if (remainingForColor.length === 0) {
+        const full = colors.find((c) => c.id === colorId);
+        setAddedEmptyColors((prev) => {
+          if (prev.some((c) => c.colorId === colorId)) return prev;
+          return [
+            ...prev,
+            {
+              colorId,
+              colorName: removedVariant.color,
+              colorHex: removedVariant.colorHex,
+              isGradient: full?.is_gradient ?? false,
+              gradientHex2: full?.gradient_hex_2 ?? null,
+            },
+          ];
+        });
+      }
+      return;
+    }
+
+    // Atualização de quantidade ou criação de variant nova
+    setForm((prev) => {
+      const variants = prev.variants;
+      const idx = variants.findIndex(
+        (v) => v.color_id === colorId && v.size === size
+      );
+
+      if (idx >= 0) {
+        return {
+          ...prev,
+          variants: variants.map((v, i) =>
+            i === idx ? { ...v, quantity: newQty! } : v
+          ),
+        };
+      }
+
+      // Variant não existe: criar apenas se qty > 0
+      if (newQty !== null && newQty > 0) {
+        const newVariant: Variant = {
+          id: crypto.randomUUID(),
+          color_id: colorId,
+          color: colorName,
+          colorHex,
+          size,
+          quantity: newQty,
+        };
+        return { ...prev, variants: [...variants, newVariant] };
+      }
+
+      return prev;
+    });
+
+    // Quando a primeira variant de uma cor é criada, remove de addedEmptyColors
+    // (a cor passa a aparecer via form.variants na próxima renderização)
+    if (newQty !== null && newQty > 0) {
+      setAddedEmptyColors((prev) => prev.filter((c) => c.colorId !== colorId));
+    }
   }
 
-  // Remover variante
-  function removeVariant(id: string) {
-    setForm((prev) => ({
-      ...prev,
-      variants: prev.variants.filter((v) => v.id !== id),
-    }));
-  }
+  function handleSizeDelete(colorId: string, size: string) {
+    const removedVariant = form.variants.find(
+      (v) => v.color_id === colorId && v.size === size
+    );
+    const remainingForColor = form.variants.filter(
+      (v) => v.color_id === colorId && v.size !== size
+    );
 
-  // Atualizar variante
-  function updateVariant(id: string, field: keyof Variant, value: string | number) {
     setForm((prev) => ({
       ...prev,
-      variants: prev.variants.map((v) =>
-        v.id === id ? { ...v, [field]: value } : v
+      variants: prev.variants.filter(
+        (v) => !(v.color_id === colorId && v.size === size)
       ),
     }));
+
+    // Se a cor ficou sem variants, mantém o grupo visível no Accordion
+    if (removedVariant && remainingForColor.length === 0) {
+      const full = colors.find((c) => c.id === colorId);
+      setAddedEmptyColors((prev) => {
+        if (prev.some((c) => c.colorId === colorId)) return prev;
+        return [
+          ...prev,
+          {
+            colorId,
+            colorName: removedVariant.color,
+            colorHex: removedVariant.colorHex,
+            isGradient: full?.is_gradient ?? false,
+            gradientHex2: full?.gradient_hex_2 ?? null,
+          },
+        ];
+      });
+    }
+  }
+
+  function handleColorRemove(colorId: string) {
+    setForm((prev) => ({
+      ...prev,
+      variants: prev.variants.filter((v) => v.color_id !== colorId),
+    }));
+    setAddedEmptyColors((prev) => prev.filter((c) => c.colorId !== colorId));
+  }
+
+  function handleColorAdd(
+    colorId: string,
+    colorName: string,
+    colorHex: string,
+    isGradient: boolean,
+    gradientHex2: string | null
+  ) {
+    const alreadyExists =
+      form.variants.some((v) => v.color_id === colorId) ||
+      addedEmptyColors.some((c) => c.colorId === colorId);
+
+    if (!alreadyExists) {
+      setAddedEmptyColors((prev) => [
+        ...prev,
+        { colorId, colorName, colorHex, isGradient, gradientHex2 },
+      ]);
+    }
+    setAddColorOpen(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     await onSubmit(form);
   }
+
+  // Agrupa variantes por cor para renderização
+  const currentGroups = groupVariantsByColor(
+    form.variants,
+    addedEmptyColors,
+    colors,
+    sizes
+  );
+
+  // Cores disponíveis no popover: exclui as que já estão no produto
+  const existingColorIds = new Set(currentGroups.map((g) => g.colorId));
+  const availableColors = colors.filter((c) => !existingColorIds.has(c.id));
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-8">
@@ -193,13 +396,21 @@ export function ProductForm({
         >
           {photoPreview ? (
             <>
-              <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+              <img
+                src={photoPreview}
+                alt="Preview"
+                className="w-full h-full object-cover"
+              />
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setPhotoPreview(null);
-                  setForm((prev) => ({ ...prev, photoFile: undefined, photoUrl: undefined }));
+                  setForm((prev) => ({
+                    ...prev,
+                    photoFile: undefined,
+                    photoUrl: undefined,
+                  }));
                 }}
                 className="absolute top-2 right-2 bg-background/80 rounded-full p-1.5"
               >
@@ -235,7 +446,7 @@ export function ProductForm({
         />
       </div>
 
-      {/* Categoria - Radio buttons grandes */}
+      {/* Categoria */}
       <div className="space-y-2">
         <Label>Categoria</Label>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -243,7 +454,9 @@ export function ProductForm({
             <button
               key={cat.id}
               type="button"
-              onClick={() => setForm((prev) => ({ ...prev, category: cat.id }))}
+              onClick={() =>
+                setForm((prev) => ({ ...prev, category: cat.id }))
+              }
               className={cn(
                 "flex flex-col items-center gap-1 p-4 rounded-xl border-2 transition-all min-h-[72px]",
                 form.category === cat.id
@@ -265,7 +478,9 @@ export function ProductForm({
           id="model"
           value={form.model}
           onChange={(e) => handleModelChange(e.target.value)}
-          onFocus={() => form.model && setShowSuggestions(modelSuggestions.length > 0)}
+          onFocus={() =>
+            form.model && setShowSuggestions(modelSuggestions.length > 0)
+          }
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           placeholder="Ex: Cortininha, Ripple..."
           className="h-12 text-base"
@@ -289,7 +504,7 @@ export function ProductForm({
         )}
       </div>
 
-      {/* Custo com máscara R$ */}
+      {/* Custo */}
       <div className="space-y-2">
         <Label htmlFor="cost">Custo (R$)</Label>
         <div className="relative">
@@ -307,106 +522,90 @@ export function ProductForm({
         </div>
       </div>
 
-      {/* Tabela de variantes */}
+      {/* Variantes agrupadas por cor */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label>Variantes</Label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addVariant}
-            className="gap-1"
+          <Popover
+            open={addColorOpen}
+            onOpenChange={(open) => {
+              setAddColorOpen(open);
+              if (!open) setShowCreateColor(false);
+            }}
           >
-            <Plus className="w-4 h-4" />
-            Adicionar
-          </Button>
-        </div>
-
-        {form.variants.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-6 bg-muted/50 rounded-xl">
-            Nenhuma variante adicionada
-          </p>
-        )}
-
-        <div className="space-y-3">
-          {form.variants.map((variant) => (
-            <div
-              key={variant.id}
-              className="p-3 bg-muted/50 rounded-xl space-y-2"
+            <PopoverTrigger
+              type="button"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "gap-1"
+              )}
             >
-              {/* Linha 1: Cor + Tamanho + Remover */}
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-6 h-6 rounded-full border border-border flex-shrink-0"
-                  style={{ background: variant.colorHex || "#ccc" }}
-                />
-                <select
-                  value={variant.color_id}
-                  onChange={(e) => {
-                    if (e.target.value === "__new__") {
-                      setShowColorPicker(variant.id);
-                      setNewColorName("");
-                      setNewColorHex("#E8839A");
-                      return;
-                    }
-                    const selectedColor = colors.find((c) => c.id === e.target.value);
-                    if (selectedColor) {
-                      updateVariant(variant.id, "color_id", selectedColor.id);
-                      updateVariant(variant.id, "color", selectedColor.name);
-                      updateVariant(variant.id, "colorHex", selectedColor.hex);
-                    }
-                  }}
-                  className="flex-1 h-10 rounded-lg border border-border bg-card px-2 text-sm"
-                >
-                  {colors.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                  <option value="__new__">+ Outra cor...</option>
-                </select>
-
-                <select
-                  value={variant.size}
-                  onChange={(e) => updateVariant(variant.id, "size", e.target.value)}
-                  className="w-20 h-10 rounded-lg border border-border bg-card px-2 text-sm text-center"
-                >
-                  {sizes.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() => removeVariant(variant.id)}
-                  className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors flex-shrink-0"
-                  aria-label="Remover variante"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Linha 2: Quantidade */}
-              <div className="flex items-center gap-2 pl-8">
-                <span className="text-xs text-muted-foreground">Qtd:</span>
-                <Input
-                  type="number"
-                  min={0}
-                  value={variant.quantity}
-                  onChange={(e) =>
-                    updateVariant(variant.id, "quantity", parseInt(e.target.value) || 0)
-                  }
-                  className="w-20 h-9 text-center text-sm"
-                />
-              </div>
-
-              {/* Mini Color Picker — aparece ao selecionar "+ Outra cor..." */}
-              {showColorPicker === variant.id && (
-                <div className="p-3 bg-card border border-border rounded-xl space-y-3">
-                  <p className="text-xs font-semibold text-foreground">Nova cor</p>
+              <Plus className="w-4 h-4" />
+              Adicionar cor
+            </PopoverTrigger>
+            <PopoverContent side="bottom" align="end" className="w-64 p-0">
+              {!showCreateColor ? (
+                // Lista de cores disponíveis
+                <div className="flex flex-col">
+                  {availableColors.length === 0 ? (
+                    <p className="text-sm text-muted-foreground px-3 py-4 text-center">
+                      Todas as cores já foram adicionadas.
+                    </p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto p-1">
+                      {availableColors.map((c) => {
+                        const swatchStyle =
+                          c.is_gradient && c.gradient_hex_2
+                            ? {
+                                background: `linear-gradient(135deg, ${c.hex}, ${c.gradient_hex_2})`,
+                              }
+                            : { background: c.hex };
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() =>
+                              handleColorAdd(
+                                c.id,
+                                c.name,
+                                c.hex,
+                                c.is_gradient ?? false,
+                                c.gradient_hex_2 ?? null
+                              )
+                            }
+                            className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors text-sm text-left"
+                          >
+                            <div
+                              className="w-5 h-5 rounded-full border border-border shrink-0"
+                              style={swatchStyle}
+                            />
+                            <span>{c.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="border-t border-border p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewColorName("");
+                        setNewColorHex("#E8839A");
+                        setShowCreateColor(true);
+                      }}
+                      className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors text-sm text-muted-foreground"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Criar cor nova
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // Sub-view: criar cor nova dentro do mesmo popover
+                <div className="p-3 space-y-3">
+                  <p className="text-xs font-semibold text-foreground">
+                    Nova cor
+                  </p>
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
@@ -429,13 +628,20 @@ export function ProductForm({
                       onClick={async () => {
                         if (!onAddColor) return;
                         setSavingColor(true);
-                        const created = await onAddColor(newColorName.trim(), newColorHex);
+                        const created = await onAddColor(
+                          newColorName.trim(),
+                          newColorHex
+                        );
                         setSavingColor(false);
                         if (created) {
-                          updateVariant(variant.id, "color_id", created.id);
-                          updateVariant(variant.id, "color", created.name);
-                          updateVariant(variant.id, "colorHex", created.hex);
-                          setShowColorPicker(null);
+                          handleColorAdd(
+                            created.id,
+                            created.name,
+                            created.hex,
+                            false,
+                            null
+                          );
+                          setShowCreateColor(false);
                         }
                       }}
                       className="gap-1"
@@ -447,28 +653,60 @@ export function ProductForm({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => setShowColorPicker(null)}
+                      onClick={() => setShowCreateColor(false)}
                     >
                       Cancelar
                     </Button>
                   </div>
                 </div>
               )}
-            </div>
-          ))}
+            </PopoverContent>
+          </Popover>
         </div>
+
+        {currentGroups.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6 bg-muted/50 rounded-xl">
+            Nenhuma cor adicionada ainda. Use o botão acima para começar.
+          </p>
+        ) : (
+          <Accordion className="space-y-2">
+            {currentGroups.map((group) => (
+              <VariantColorGroup
+                key={group.colorId}
+                colorId={group.colorId}
+                colorName={group.colorName}
+                colorHex={group.colorHex}
+                isGradient={group.isGradient}
+                gradientHex2={group.gradientHex2}
+                sizes={group.sizes}
+                onSizeQuantityChange={(size, newQty) =>
+                  handleSizeQuantityChange(
+                    group.colorId,
+                    group.colorName,
+                    group.colorHex,
+                    size,
+                    newQty
+                  )
+                }
+                onSizeDelete={(size) => handleSizeDelete(group.colorId, size)}
+                onColorRemove={() => handleColorRemove(group.colorId)}
+              />
+            ))}
+          </Accordion>
+        )}
       </div>
 
       {/* Dados do catálogo */}
       <div className="rounded-2xl border border-border bg-card p-4 space-y-5">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Dados do catálogo</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            Dados do catálogo
+          </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             Informações que aparecem para a cliente no catálogo público.
           </p>
         </div>
 
-        {/* Preço de venda */}
         <div className="space-y-2">
           <Label htmlFor="price">Preço de venda</Label>
           <div className="relative">
@@ -489,23 +727,24 @@ export function ProductForm({
           </p>
         </div>
 
-        {/* Descrição */}
         <div className="space-y-2">
           <Label htmlFor="description">Descrição</Label>
           <Textarea
             id="description"
             value={form.description}
-            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, description: e.target.value }))
+            }
             rows={5}
             placeholder="Caimento, tecido, modelagem..."
             className="resize-y"
           />
           <p className="text-xs text-muted-foreground">
-            Texto que aparece para a cliente no catálogo. Descreva caimento, tecido, modelagem.
+            Texto que aparece para a cliente no catálogo. Descreva caimento,
+            tecido, modelagem.
           </p>
         </div>
 
-        {/* Ordem de exibição */}
         <div className="space-y-2">
           <Label htmlFor="display-order">Ordem de exibição</Label>
           <Input
@@ -518,7 +757,8 @@ export function ProductForm({
             min="0"
           />
           <p className="text-xs text-muted-foreground">
-            Quanto maior o número, mais alto o produto aparece no catálogo. Use 0 para ordem padrão.
+            Quanto maior o número, mais alto o produto aparece no catálogo. Use
+            0 para ordem padrão.
           </p>
         </div>
       </div>
