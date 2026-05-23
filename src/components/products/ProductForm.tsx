@@ -282,7 +282,7 @@ export function ProductForm({
       // Variant não existe: criar apenas se qty > 0
       if (newQty !== null && newQty > 0) {
         const newVariant: Variant = {
-          id: crypto.randomUUID(),
+          id: `tmp-${crypto.randomUUID()}`,
           color_id: colorId,
           color: colorName,
           colorHex,

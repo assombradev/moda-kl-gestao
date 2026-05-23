@@ -15,6 +15,7 @@ interface ConfirmModalProps {
   children?: React.ReactNode;
   actionLabel?: string;
   onAction?: () => void;
+  isError?: boolean;
 }
 
 export function ConfirmModal({
@@ -25,6 +26,7 @@ export function ConfirmModal({
   children,
   actionLabel = "OK",
   onAction,
+  isError = false,
 }: ConfirmModalProps) {
   return (
     <AnimatePresence>
@@ -44,7 +46,7 @@ export function ConfirmModal({
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-sm bg-card rounded-3xl p-8 shadow-xl text-center space-y-4"
           >
-            {/* Ícone animado de check */}
+            {/* Ícone animado de check ou X */}
             <div className="flex justify-center">
               <svg
                 className="w-16 h-16"
@@ -55,24 +57,49 @@ export function ConfirmModal({
                   cx="32"
                   cy="32"
                   r="28"
-                  stroke="#22C55E"
+                  stroke={isError ? "#EF4444" : "#22C55E"}
                   strokeWidth="4"
                   fill="none"
                   initial={{ pathLength: 0 }}
                   animate={{ pathLength: 1 }}
                   transition={{ duration: 0.5, ease: "easeOut" }}
                 />
-                <motion.path
-                  d="M20 32L28 40L44 24"
-                  stroke="#22C55E"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                  initial={{ pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ duration: 0.4, delay: 0.3, ease: "easeOut" }}
-                />
+                {isError ? (
+                  <>
+                    <motion.path
+                      d="M22 22L42 42"
+                      stroke="#EF4444"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      fill="none"
+                      initial={{ pathLength: 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={{ duration: 0.3, delay: 0.3, ease: "easeOut" }}
+                    />
+                    <motion.path
+                      d="M42 22L22 42"
+                      stroke="#EF4444"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      fill="none"
+                      initial={{ pathLength: 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={{ duration: 0.3, delay: 0.4, ease: "easeOut" }}
+                    />
+                  </>
+                ) : (
+                  <motion.path
+                    d="M20 32L28 40L44 24"
+                    stroke="#22C55E"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.4, delay: 0.3, ease: "easeOut" }}
+                  />
+                )}
               </svg>
             </div>
 

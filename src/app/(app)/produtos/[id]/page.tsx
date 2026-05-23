@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Trash2, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductForm, type ProductFormData } from "@/components/products/ProductForm";
+import { prepareVariantsForApi } from "@/lib/variants";
 import { VariantRow } from "@/components/products/VariantRow";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
 import { LoadingScreen } from "@/components/common/LoadingScreen";
@@ -46,6 +47,7 @@ export default function ProductDetailPage() {
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchProduct = useCallback(async () => {
     try {
@@ -157,6 +159,7 @@ export default function ProductDetailPage() {
       updates.description = data.description || null;
       const parsedOrder = parseInt(data.displayOrder, 10);
       updates.display_order = Number.isFinite(parsedOrder) ? parsedOrder : 0;
+      updates.variants = prepareVariantsForApi(data.variants);
 
       const res = await fetch(`/api/products/${productId}`, {
         method: "PATCH",
@@ -164,24 +167,25 @@ export default function ProductDetailPage() {
         body: JSON.stringify(updates),
       });
 
+      const body = await res.json();
+
       if (res.ok) {
-        // Atualiza o state local com os dados editados para não resetar
-        setProduct((prev: any) => ({
-          ...prev,
-          name: data.name,
-          category: data.category,
-          model: data.model,
-          cost_brl: data.cost ? parseFloat(data.cost.replace(',', '.')) : prev.cost_brl,
-          price_brl: updates.price_brl,
-          description: updates.description,
-          display_order: updates.display_order,
-        }));
+        const p = body.product;
+        setProduct({
+          ...p,
+          variants: (p.variants || []).map((v: any) => ({
+            ...v,
+            color_id: v.color_id,
+            color: v.colors?.name || '',
+            colorHex: v.colors?.hex || '#ccc',
+          })),
+        });
         setShowSuccess(true);
       } else {
-        alert("Erro ao salvar alterações");
+        setErrorMessage(body.error || "Erro desconhecido ao salvar.");
       }
     } catch {
-      alert("Erro de conexão");
+      setErrorMessage("Erro de conexão. Tente novamente.");
     } finally {
       setSaving(false);
     }
@@ -312,6 +316,7 @@ export default function ProductDetailPage() {
 
       {/* Formulário de edição */}
       <ProductForm
+        key={product.updated_at}
         initialData={{
           name: product.name || '',
           category: product.category || '',
@@ -363,6 +368,15 @@ export default function ProductDetailPage() {
         onClose={() => setShowSuccess(false)}
         title="Alterações salvas!"
         message="O produto foi atualizado com sucesso."
+      />
+
+      {/* Modal de erro */}
+      <ConfirmModal
+        open={errorMessage !== null}
+        onClose={() => setErrorMessage(null)}
+        title="Erro ao salvar"
+        message={errorMessage ?? undefined}
+        isError
       />
     </div>
   );
