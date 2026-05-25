@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Plus, Upload, X, Check, AlertCircle } from "lucide-react";
+import { compressImage, createImagePreview, revokeImagePreview } from "@/lib/image-compress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +16,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { VariantColorGroup } from "@/components/products/VariantColorGroup";
+import { GalleryColorBlock } from "@/components/products/GalleryColorBlock";
 import { SIZES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -131,6 +133,61 @@ function groupVariantsByColor(
   return Array.from(groups.values());
 }
 
+type GalleryPhoto = {
+  id: string;
+  colorId: string;
+  file: File | null;
+  previewUrl: string;
+  isCover: boolean;
+  position: number;
+};
+
+const MAX_GALLERY_PER_COLOR = 7;
+
+function activeColorsForGallery(
+  variants: Variant[],
+  emptyColors: EmptyColor[],
+  allColors: ColorProp[]
+): Array<{
+  colorId: string;
+  colorName: string;
+  colorHex: string;
+  isGradient: boolean;
+  gradientHex2: string | null;
+}> {
+  const seen = new Set<string>();
+  const result: ReturnType<typeof activeColorsForGallery> = [];
+
+  for (const v of variants) {
+    if (!seen.has(v.color_id)) {
+      seen.add(v.color_id);
+      const full = allColors.find((c) => c.id === v.color_id);
+      result.push({
+        colorId: v.color_id,
+        colorName: v.color,
+        colorHex: v.colorHex,
+        isGradient: full?.is_gradient ?? false,
+        gradientHex2: full?.gradient_hex_2 ?? null,
+      });
+    }
+  }
+
+  for (const ec of emptyColors) {
+    if (!seen.has(ec.colorId)) {
+      seen.add(ec.colorId);
+      result.push({
+        colorId: ec.colorId,
+        colorName: ec.colorName,
+        colorHex: ec.colorHex,
+        isGradient: ec.isGradient,
+        gradientHex2: ec.gradientHex2,
+      });
+    }
+  }
+
+  return result;
+}
+
 export function ProductForm({
   initialData,
   models = [],
@@ -170,6 +227,7 @@ export function ProductForm({
   const [savingColor, setSavingColor] = useState(false);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
 
   const [initialized, setInitialized] = useState(!!initialData);
   useEffect(() => {
@@ -372,6 +430,88 @@ export function ProductForm({
     setAddColorOpen(false);
   }
 
+  // --- Handlers de galeria ---
+
+  async function handleGalleryPhotosAdded(colorId: string, files: File[]) {
+    const currentForColor = gallery.filter((p) => p.colorId === colorId);
+    const slots = MAX_GALLERY_PER_COLOR - currentForColor.length;
+    if (slots <= 0) return;
+
+    const toProcess = files.slice(0, slots);
+    const newPhotos: GalleryPhoto[] = [];
+
+    for (const file of toProcess) {
+      const compressed = await compressImage(file, { maxSizeMB: 1, maxWidthOrHeight: 1600 });
+      const previewUrl = createImagePreview(compressed);
+      const maxPos = [...currentForColor, ...newPhotos].reduce(
+        (m, p) => Math.max(m, p.position),
+        -1
+      );
+      const isCover = currentForColor.length === 0 && newPhotos.length === 0;
+      newPhotos.push({
+        id: `local-${crypto.randomUUID()}`,
+        colorId,
+        file: compressed,
+        previewUrl,
+        isCover,
+        position: maxPos + 1,
+      });
+    }
+
+    setGallery((prev) => [...prev, ...newPhotos]);
+  }
+
+  function handleGalleryPhotoRemove(photoId: string) {
+    setGallery((prev) => {
+      const photo = prev.find((p) => p.id === photoId);
+      if (!photo) return prev;
+      if (photo.file) revokeImagePreview(photo.previewUrl);
+
+      const remaining = prev.filter((p) => p.id !== photoId);
+
+      if (photo.isCover) {
+        const forColor = remaining
+          .filter((p) => p.colorId === photo.colorId)
+          .sort((a, b) => a.position - b.position);
+        if (forColor.length > 0) {
+          const newCoverId = forColor[0].id;
+          return remaining.map((p) =>
+            p.id === newCoverId ? { ...p, isCover: true } : p
+          );
+        }
+      }
+
+      return remaining;
+    });
+  }
+
+  function handleGalleryPhotoSetCover(photoId: string) {
+    setGallery((prev) => {
+      const photo = prev.find((p) => p.id === photoId);
+      if (!photo) return prev;
+      return prev.map((p) =>
+        p.colorId === photo.colorId ? { ...p, isCover: p.id === photoId } : p
+      );
+    });
+  }
+
+  // Limpa galeria quando uma cor é removida das variantes
+  useEffect(() => {
+    const activeIds = new Set([
+      ...form.variants.map((v) => v.color_id),
+      ...addedEmptyColors.map((c) => c.colorId),
+    ]);
+
+    setGallery((prev) => {
+      const removed = prev.filter((p) => !activeIds.has(p.colorId));
+      removed.forEach((p) => {
+        if (p.file) revokeImagePreview(p.previewUrl);
+      });
+      return prev.filter((p) => activeIds.has(p.colorId));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.variants, addedEmptyColors]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -398,6 +538,9 @@ export function ProductForm({
     colors,
     sizes
   );
+
+  // Cores ativas para a galeria (deduplicado, mesma ordem de inserção)
+  const activeColors = activeColorsForGallery(form.variants, addedEmptyColors, colors);
 
   // Cores disponíveis no popover: exclui as que já estão no produto
   const existingColorIds = new Set(currentGroups.map((g) => g.colorId));
@@ -789,6 +932,38 @@ export function ProductForm({
               Quanto maior o número, mais alto o produto aparece no catálogo. Use
               0 para ordem padrão.
             </p>
+          </div>
+
+          {/* Galeria por cor */}
+          <div className="space-y-3">
+            <div>
+              <Label>Galeria por cor</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Fotos agrupadas por cor para o catálogo. A estrela marca a foto de capa da cor.
+              </p>
+            </div>
+            {activeColors.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6 bg-muted/50 rounded-xl">
+                Adicione variantes na aba &quot;Dados internos&quot; para liberar a galeria.
+              </p>
+            ) : (
+              <div className="space-y-5">
+                {activeColors.map((color) => (
+                  <GalleryColorBlock
+                    key={color.colorId}
+                    colorId={color.colorId}
+                    colorName={color.colorName}
+                    colorHex={color.colorHex}
+                    isGradient={color.isGradient}
+                    gradientHex2={color.gradientHex2}
+                    photos={gallery.filter((p) => p.colorId === color.colorId)}
+                    onPhotosAdded={handleGalleryPhotosAdded}
+                    onPhotoRemove={handleGalleryPhotoRemove}
+                    onPhotoSetCover={handleGalleryPhotoSetCover}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
