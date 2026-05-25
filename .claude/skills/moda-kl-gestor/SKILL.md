@@ -66,13 +66,28 @@ Regras absolutas:
 
 ### variants (36 linhas)
 - id (uuid, PK), product_id (uuid → products.id, CASCADE), color_id (uuid → colors.id), size (text — CHECK em 'PP','P','M','G','GG','Tamanho Único'), quantity (int4, CHECK ≥ 0), created_at, updated_at
+- Constraint UNIQUE `variants_product_id_color_id_size_key` em (product_id, color_id, size) — banco bloqueia duplicatas com erro 23505 (confirmado em 2026-05-23). A validação de duplicata no frontend (ProductForm) é uma camada adicional mais amigável que expõe o erro antes de chegar ao banco.
 
 ### movements (64 linhas)
 - id (uuid, PK), variant_id (uuid → variants.id, CASCADE), user_id (uuid → users.id, nullable — preserva a linha com NULL caso o usuário seja deletado), action (text — CHECK em 'create','increment','decrement','set','edit'), qty_before, qty_after, delta (int4), created_at
 
 ### product_images (0 linhas — tabela criada, ainda não populada)
-- id (uuid, PK, DEFAULT gen_random_uuid()), product_id (uuid, NOT NULL → products.id CASCADE), url (text, NOT NULL), position (integer, NOT NULL DEFAULT 0), is_cover (boolean, NOT NULL DEFAULT false), alt_text (text, nullable), created_at (timestamptz, NOT NULL DEFAULT now())
-- Constraints: `product_images_unique_position_per_product` (UNIQUE product_id + position), `product_images_one_cover_per_product` (UNIQUE product_id WHERE is_cover = true)
+- **8 colunas (pós-migration 0005, aplicada em 2026-05-20):**
+  - id (uuid, PK, DEFAULT gen_random_uuid())
+  - product_id (uuid, NOT NULL → products.id ON DELETE CASCADE)
+  - url (text, NOT NULL)
+  - position (integer, NOT NULL, DEFAULT 0)
+  - is_cover (boolean, NOT NULL, DEFAULT false)
+  - alt_text (text, nullable)
+  - created_at (timestamptz, NOT NULL, DEFAULT now())
+  - color_id (uuid, NOT NULL → colors.id ON DELETE CASCADE)
+- **Constraints ativas:**
+  - `product_images_unique_position_per_product_color` — UNIQUE (product_id, color_id, position)
+- **Índices:**
+  - `product_images_one_cover_per_product_color` — UNIQUE (product_id, color_id) WHERE is_cover = true
+  - `idx_product_images_product_color` — btree (product_id, color_id)
+  - `idx_product_images_product_id` — btree (product_id)
+- As constraints antigas (`product_images_unique_position_per_product` e `product_images_one_cover_per_product`) foram dropadas pela migration 0005.
 
 ### Extensões habilitadas no banco
 - pgcrypto (gen_random_uuid)
@@ -126,6 +141,20 @@ RLS está habilitado em todas as 7 tabelas. As policies abaixo foram criadas pel
 Auth (públicas): GET /api/auth/users, POST /api/auth/login, POST /api/auth/logout
 Auth (protegidas): GET /api/auth/me, POST /api/auth/change-pin
 Produtos: GET/POST /api/products, GET/PATCH/DELETE /api/products/[id]
+
+**PATCH /api/products/[id] — comportamento detalhado:**
+- Campos escalares (name, category, model, cost_brl, price_brl, description, display_order, photo_url) são atualizados normalmente.
+- Campo `variants` no body (opcional, snapshot diff):
+  - Ausente → variants do banco não são tocadas (comportamento legado preservado)
+  - `[]` (array vazio) → campo ignorado silenciosamente (proteção contra perda acidental de dados)
+  - Array preenchido → diff contra estado atual do banco:
+    - Item sem `id` → INSERT nova variant + movement `action='create'`
+    - Item com `id` pertencente ao produto → UPDATE se mudou algo; se `quantity` mudou → movement `action='set'`; mudança de cor/tamanho não gera movement
+    - Item com `id` que NÃO pertence ao produto → 400 "Variante referenciada não pertence a este produto"
+    - Variants do banco ausentes do snapshot → DELETE (movements relacionados apagados via FK CASCADE)
+    - Duplicata (color_id + size) no payload → 400 (banco também bloquearia via constraint UNIQUE)
+- Retorno: produto completo com variants no mesmo formato do GET (`variants(id, color_id, size, quantity, created_at, updated_at, colors:color_id(...))`)
+
 Variações: PATCH /api/variants/[id]
 Cores: GET/POST/DELETE /api/colors
 Modelos: GET/POST /api/models, PATCH/DELETE /api/models/[id] (canônica), DELETE /api/models (legada — recebe id no body, mantida por compatibilidade)
@@ -144,12 +173,27 @@ A pasta `supabase/migrations/` existe e contém as seguintes migrations aplicada
 - `0002_create_product_images.sql` — cria a tabela product_images com constraints
 - `0003_setup_public_rls_policies.sql` — cria função is_product_published, view products_public, policies de RLS e GRANTs para anon
 - `0004_fix_anon_products_access.sql` — corrige acesso anon ao catálogo público
+- `0005_add_color_to_product_images.sql` — adiciona color_id (uuid NOT NULL, FK → colors ON DELETE CASCADE) em product_images; dropa constraints por-produto antigas; cria constraints compostas (product_id, color_id) em posição e capa; cria índice de apoio. **Aplicada em 2026-05-20. Migration idempotente (IF NOT EXISTS / DROP IF EXISTS). Versionada no commit eba1abf.**
 
 ## Funcionalidades implementadas no gestor
 
 - Formulário de produto tem campos de catálogo: price_brl (input decimal com vírgula como separador), description (textarea), display_order (input inteiro ≥ 0)
 - Slug gerado automaticamente a partir do nome do produto (server-side, na criação e em edições que alterem o nome). Algoritmo em `src/lib/slug.ts`
 - Componente Textarea em `src/components/ui/textarea.tsx` seguindo padrão shadcn/ui
+
+### UI de variantes (agrupada por cor — entregue em 4b.1, 4b.2, 4b.3)
+
+- Variantes exibidas agrupadas por cor; cada cor é um item de shadcn Accordion (múltiplos abertos simultaneamente, base-ui default)
+- Header do Accordion: swatch da cor, nome, resumo ("X tamanhos, Y peças" ou "Sem estoque"), botão X de remoção
+- Conteúdo do Accordion: 6 tamanhos fixos (PP, P, M, G, GG, Tamanho Único), cada um com input numérico e botão lixeira (lixeira só aparece se já existe como variant no banco)
+- Adicionar cor: botão "+ Adicionar cor" abre Popover com lista das cores ainda não no produto + opção "Criar cor nova" (cria na tabela colors e já adiciona ao produto)
+- Componentes: `src/components/products/SizeRow.tsx` (linha de tamanho) e `src/components/products/VariantColorGroup.tsx` (grupo de cor com Accordion + AlertDialog)
+- Estado interno do ProductForm: Variant[] plano (sem agrupamento). Estrutura agrupada é derivada em tempo de render pela função pura `groupVariantsByColor`
+- Variantes novas recebem id local `tmp-${crypto.randomUUID()}`. A função `prepareVariantsForApi` em `src/lib/variants.ts` detecta o prefixo e omite o id no payload pro PATCH (server trata como INSERT)
+- Após save bem-sucedido: resposta do PATCH contém produto completo com ids reais; frontend atualiza state e força re-mount do ProductForm via `key={product.updated_at}` para que initialData reflita os ids do banco
+- Confirmação destrutiva: remoção de cor inteira usa shadcn AlertDialog com botão "Remover" destrutivo e "Cancelar"; delete de tamanho individual NÃO tem confirmação (decisão UX deliberada — baixa destrutividade, ação facilmente reversível digitando o número de volta)
+- Validação de duplicata (color_id + size) no submit: ProductForm verifica o array antes de chamar onSubmit; exibe Alert shadcn variant="destructive" acima do botão; estado submitError é limpo automaticamente a qualquer alteração de variante/cor
+- Feedback de erro: erros do PATCH e DELETE na página de edição usam ConfirmModal com prop isError (círculo vermelho com X animado). alert() nativo eliminado da página de edição
 
 ## Decisões de design já tomadas
 
@@ -160,14 +204,25 @@ A pasta `supabase/migrations/` existe e contém as seguintes migrations aplicada
 - Catálogo público lê apenas via view `products_public` e tabelas com RLS específico para anon. Nunca lê products direto. RLS é a fonte de verdade da segurança.
 - Galeria de fotos do catálogo será por combinação produto + cor, não por produto inteiro. Isso permite mostrar a peça na cor específica que o cliente selecionar no catálogo.
 - Fotos da galeria são exclusivas do catálogo. O campo photo_url em products continua sendo de uso interno do gestor.
+- PATCH de variants segue padrão "fire-and-forget" sem transação no insert de movements (mantém o padrão do POST de produto). Falha no movement é logada via console.error mas não retorna 500.
+- Mudança de cor/tamanho em variant existente é permitida sem trava (autonomia da dona). Só mudança de quantity gera movement.
+- Deleção de variant é destrutiva e em cascata: movements relacionados são apagados via FK CASCADE, sem possibilidade de recuperação.
+- Variants com quantity = 0 são aceitas no banco (variant válida cadastrada, representa tamanho esgotado mas ainda ativo no sistema).
+- Snapshot vazio no PATCH (`variants: []`) é descartado silenciosamente por segurança — proteção contra bug de frontend que zere acidentalmente o array.
 
 ## Evolução planejada
 
-- Refatoração da UI de variantes para agrupar por cor
 - Adicionar abas (Dados internos / Dados do catálogo) no formulário de produto
-- Galeria de fotos por combinação produto + cor (exige migration adicionando color_id em product_images)
+- Galeria de fotos por combinação produto + cor (schema já pronto — migration 0005 aplicada em 2026-05-20; faltam os sub-blocos de UI de upload, listagem e persistência em product_images)
 - Toggle de publicação no catálogo com validação de galeria não vazia
 - Mudança da lista de produtos para grid 2 colunas
+- Padronização gradual dos alert() nativos remanescentes em outras telas (produtos/novo, etc.) via ConfirmModal/AlertDialog
+
+## Pontos de atenção conhecidos
+
+- Modal "Deletar produto?" na página de edição não tem botão "Cancelar" explícito — fecha apenas clicando fora. Funcional, mas UX subótima. Anotado para revisão futura.
+- `key={product.updated_at}` no ProductForm pode não forçar re-mount se duas edições ocorrerem dentro do mesmo segundo (cenário raro com 3 usuários internos). Aceito como padrão atual.
+- alert() nativo ainda pode existir em pontos não auditados pela refatoração (ex: produtos/novo). A padronização via ConfirmModal/AlertDialog ocorre de forma gradual.
 
 ## Comportamento esperado em sessões futuras
 
