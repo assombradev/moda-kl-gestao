@@ -198,10 +198,10 @@ export default function ProductDetailPage() {
       if (res.ok) {
         router.push("/produtos");
       } else {
-        alert("Erro ao deletar produto");
+        setErrorMessage("Não foi possível excluir o produto. Tente novamente.");
       }
     } catch {
-      alert("Erro de conexão");
+      setErrorMessage("Erro de conexão. Tente novamente.");
     }
   }
 

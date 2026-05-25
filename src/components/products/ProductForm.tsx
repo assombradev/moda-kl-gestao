@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Upload, X, Check } from "lucide-react";
+import { Plus, Upload, X, Check, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Accordion } from "@/components/ui/accordion";
 import {
   Popover,
@@ -167,6 +168,8 @@ export function ProductForm({
   const [newColorHex, setNewColorHex] = useState("#E8839A");
   const [savingColor, setSavingColor] = useState(false);
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const [initialized, setInitialized] = useState(!!initialData);
   useEffect(() => {
     if (initialData && !initialized) {
@@ -223,6 +226,7 @@ export function ProductForm({
     size: string,
     newQty: number | null
   ) {
+    setSubmitError(null);
     const currentVariants = form.variants;
     const existingIdx = currentVariants.findIndex(
       (v) => v.color_id === colorId && v.size === size
@@ -303,6 +307,7 @@ export function ProductForm({
   }
 
   function handleSizeDelete(colorId: string, size: string) {
+    setSubmitError(null);
     const removedVariant = form.variants.find(
       (v) => v.color_id === colorId && v.size === size
     );
@@ -337,6 +342,7 @@ export function ProductForm({
   }
 
   function handleColorRemove(colorId: string) {
+    setSubmitError(null);
     setForm((prev) => ({
       ...prev,
       variants: prev.variants.filter((v) => v.color_id !== colorId),
@@ -351,6 +357,7 @@ export function ProductForm({
     isGradient: boolean,
     gradientHex2: string | null
   ) {
+    setSubmitError(null);
     const alreadyExists =
       form.variants.some((v) => v.color_id === colorId) ||
       addedEmptyColors.some((c) => c.colorId === colorId);
@@ -366,6 +373,20 @@ export function ProductForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    const seen = new Set<string>();
+    for (const v of form.variants) {
+      const key = `${v.color_id}::${v.size}`;
+      if (seen.has(key)) {
+        setSubmitError(
+          `Variante duplicada: ${v.color} + ${v.size}. Cada combinação de cor + tamanho só pode aparecer uma vez.`
+        );
+        return;
+      }
+      seen.add(key);
+    }
+
+    setSubmitError(null);
     await onSubmit(form);
   }
 
@@ -762,6 +783,13 @@ export function ProductForm({
           </p>
         </div>
       </div>
+
+      {submitError && (
+        <Alert variant="destructive" className="border-destructive">
+          <AlertCircle className="size-4" />
+          <AlertDescription>{submitError}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Botão de submit */}
       <Button

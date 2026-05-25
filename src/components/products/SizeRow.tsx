@@ -39,9 +39,7 @@ export function SizeRow({
   }
 
   function handleDelete() {
-    if (window.confirm(`Deletar tamanho ${size}?`)) {
-      onDelete();
-    }
+    onDelete();
   }
 
   return (

@@ -1,8 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { AccordionContent } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { SizeRow } from "./SizeRow";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +47,8 @@ export function VariantColorGroup({
   onSizeDelete,
   onColorRemove,
 }: VariantColorGroupProps) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   const swatchStyle =
     isGradient && gradientHex2
       ? { background: `linear-gradient(135deg, ${colorHex}, ${gradientHex2})` }
@@ -48,16 +62,6 @@ export function VariantColorGroup({
     sizesWithQty.length > 0
       ? `${sizesWithQty.length} tam., ${totalQty} ${totalQty === 1 ? "peça" : "peças"}`
       : "Sem estoque";
-
-  function handleColorRemove() {
-    if (
-      window.confirm(
-        `Remover a cor ${colorName} do produto? Todas as variações desta cor serão deletadas.`
-      )
-    ) {
-      onColorRemove();
-    }
-  }
 
   return (
     <AccordionPrimitive.Item
@@ -86,19 +90,43 @@ export function VariantColorGroup({
           <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground pointer-events-none hidden group-aria-expanded/trigger:inline" />
         </AccordionPrimitive.Trigger>
 
-        <button
-          type="button"
-          onClick={handleColorRemove}
-          className={cn(
-            "px-3 text-muted-foreground shrink-0",
-            "border-l border-border",
-            "hover:text-destructive hover:bg-muted/50 transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          )}
-          aria-label={`Remover cor ${colorName}`}
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <AlertDialogTrigger
+            type="button"
+            className={cn(
+              "px-3 text-muted-foreground shrink-0",
+              "border-l border-border",
+              "hover:text-destructive hover:bg-muted/50 transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            )}
+            aria-label={`Remover cor ${colorName}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <X className="w-4 h-4" />
+          </AlertDialogTrigger>
+
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remover a cor {colorName}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Todas as variações desta cor serão deletadas. Esta ação não pode
+                ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  onColorRemove();
+                  setDialogOpen(false);
+                }}
+              >
+                Remover
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </AccordionPrimitive.Header>
 
       <AccordionContent className="border-t border-border">
