@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Trash2, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ProductForm, type ProductFormData } from "@/components/products/ProductForm";
+import { ProductForm, type ProductFormData, type GalleryPhoto } from "@/components/products/ProductForm";
 import { prepareVariantsForApi } from "@/lib/variants";
 import { VariantRow } from "@/components/products/VariantRow";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
@@ -40,6 +40,7 @@ export default function ProductDetailPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [product, setProduct] = useState<any | null>(null);
+  const [initialGallery, setInitialGallery] = useState<GalleryPhoto[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [colors, setColors] = useState<{ id: string; name: string; hex: string }[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -72,6 +73,17 @@ export default function ProductDetailPage() {
             colorHex: v.colors?.hex || '#ccc',
           })),
         });
+        // Mapeia product_images para o formato GalleryPhoto usado pelo ProductForm
+        setInitialGallery(
+          (p.product_images || []).map((img: any): GalleryPhoto => ({
+            id: img.id,
+            colorId: img.color_id,
+            file: null,
+            previewUrl: img.url,
+            isCover: img.is_cover,
+            position: img.position,
+          }))
+        );
       }
       if (modelsRes.ok) {
         const data = await modelsRes.json();
@@ -328,6 +340,9 @@ export default function ProductDetailPage() {
           photoUrl: product.photo_url || undefined,
           variants: product.variants || [],
         }}
+        initialGallery={initialGallery}
+        productId={product.id}
+        onGalleryError={(msg) => setErrorMessage(msg)}
         models={models}
         colors={colors}
         onSubmit={handleSubmit}

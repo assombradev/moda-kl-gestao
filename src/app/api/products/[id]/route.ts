@@ -44,6 +44,15 @@ export async function GET(
             is_gradient,
             gradient_hex_2
           )
+        ),
+        product_images (
+          id,
+          color_id,
+          url,
+          position,
+          is_cover,
+          alt_text,
+          created_at
         )
       `)
       .eq('id', id)
@@ -56,7 +65,15 @@ export async function GET(
       )
     }
 
-    return NextResponse.json({ product })
+    // Ordena product_images por (color_id, position) para entrega previsível
+    const sortedImages = [...(product.product_images || [])].sort(
+      (a: { color_id: string; position: number }, b: { color_id: string; position: number }) => {
+        if (a.color_id !== b.color_id) return a.color_id.localeCompare(b.color_id)
+        return a.position - b.position
+      }
+    )
+
+    return NextResponse.json({ product: { ...product, product_images: sortedImages } })
   } catch (error) {
     if (error instanceof Error && error.message === 'Não autenticado') {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })

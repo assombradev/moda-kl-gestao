@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { ProductForm, type ProductFormData } from "@/components/products/ProductForm";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
+import { uploadGalleryPhoto } from "@/lib/gallery-api";
 
 /**
  * Página de cadastro de novo produto.
@@ -17,6 +18,7 @@ export default function NovoProdutoPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdSKUs, setCreatedSKUs] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     // Carregar modelos e cores disponíveis
@@ -64,7 +66,30 @@ export default function NovoProdutoPage() {
 
       if (res.ok) {
         const result = await res.json();
+        const newProductId = result.product?.id;
+
+        // Upload sequencial das fotos de galeria após produto criado
+        const photos = (data.gallery ?? []).filter((p) => p.file !== null);
+        let failedCount = 0;
+
+        if (newProductId && photos.length > 0) {
+          for (const photo of photos) {
+            try {
+              await uploadGalleryPhoto(newProductId, photo.colorId, photo.file!);
+            } catch {
+              failedCount++;
+            }
+          }
+        }
+
         setCreatedSKUs(result.skus || []);
+
+        if (failedCount > 0) {
+          setErrorMessage(
+            `Produto criado com sucesso, mas ${failedCount} ${failedCount === 1 ? "foto falhou" : "fotos falharam"} ao subir. Acesse a edição do produto para tentar novamente.`
+          );
+        }
+
         setShowSuccess(true);
       } else {
         const err = await res.json();
@@ -97,6 +122,7 @@ export default function NovoProdutoPage() {
         colors={colors}
         onSubmit={handleSubmit}
         isLoading={isLoading}
+        onGalleryError={(msg) => setErrorMessage(msg)}
         onAddColor={async (name, hex) => {
           try {
             const res = await fetch("/api/colors", {
@@ -115,6 +141,15 @@ export default function NovoProdutoPage() {
             return null;
           }
         }}
+      />
+
+      {/* Modal de erro (galeria ou criação) */}
+      <ConfirmModal
+        open={errorMessage !== null}
+        onClose={() => setErrorMessage(null)}
+        title="Atenção"
+        message={errorMessage ?? undefined}
+        isError
       />
 
       {/* Modal de sucesso com SKUs */}

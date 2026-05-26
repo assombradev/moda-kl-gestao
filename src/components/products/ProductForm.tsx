@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Upload, X, Check, AlertCircle } from "lucide-react";
 import { compressImage, createImagePreview, revokeImagePreview } from "@/lib/image-compress";
+import { uploadGalleryPhoto, deleteGalleryPhoto, setCoverGalleryPhoto } from "@/lib/gallery-api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,6 +49,7 @@ export interface ProductFormData {
   photoUrl?: string;
   photoFile?: File;
   variants: Variant[];
+  gallery?: GalleryPhoto[];
 }
 
 interface ColorProp {
@@ -86,6 +88,9 @@ interface ProductFormProps {
     hex: string
   ) => Promise<{ id: string; name: string; hex: string } | null>;
   isLoading?: boolean;
+  initialGallery?: GalleryPhoto[];
+  productId?: string;
+  onGalleryError?: (message: string) => void;
 }
 
 // Converte array plano de Variant em grupos por cor para renderização.
@@ -133,7 +138,7 @@ function groupVariantsByColor(
   return Array.from(groups.values());
 }
 
-type GalleryPhoto = {
+export type GalleryPhoto = {
   id: string;
   colorId: string;
   file: File | null;
@@ -196,6 +201,9 @@ export function ProductForm({
   onSubmit,
   onAddColor,
   isLoading = false,
+  initialGallery,
+  productId,
+  onGalleryError,
 }: ProductFormProps) {
   const [form, setForm] = useState<ProductFormData>(
     initialData || {
@@ -227,7 +235,7 @@ export function ProductForm({
   const [savingColor, setSavingColor] = useState(false);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
+  const [gallery, setGallery] = useState<GalleryPhoto[]>(initialGallery ?? []);
 
   const [initialized, setInitialized] = useState(!!initialData);
   useEffect(() => {
@@ -459,40 +467,106 @@ export function ProductForm({
     }
 
     setGallery((prev) => [...prev, ...newPhotos]);
-  }
 
-  function handleGalleryPhotoRemove(photoId: string) {
-    setGallery((prev) => {
-      const photo = prev.find((p) => p.id === photoId);
-      if (!photo) return prev;
-      if (photo.file) revokeImagePreview(photo.previewUrl);
-
-      const remaining = prev.filter((p) => p.id !== photoId);
-
-      if (photo.isCover) {
-        const forColor = remaining
-          .filter((p) => p.colorId === photo.colorId)
-          .sort((a, b) => a.position - b.position);
-        if (forColor.length > 0) {
-          const newCoverId = forColor[0].id;
-          return remaining.map((p) =>
-            p.id === newCoverId ? { ...p, isCover: true } : p
+    // Modo edição: faz upload imediato, substitui id local pelo id real do banco
+    if (productId) {
+      for (const localPhoto of newPhotos) {
+        try {
+          const imageRecord = await uploadGalleryPhoto(productId, colorId, localPhoto.file!);
+          revokeImagePreview(localPhoto.previewUrl);
+          setGallery((prev) =>
+            prev.map((p) =>
+              p.id === localPhoto.id
+                ? {
+                    ...p,
+                    id: imageRecord.id,
+                    previewUrl: imageRecord.url,
+                    position: imageRecord.position,
+                    isCover: imageRecord.is_cover,
+                    file: null,
+                  }
+                : p
+            )
           );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Erro ao subir foto";
+          revokeImagePreview(localPhoto.previewUrl);
+          setGallery((prev) => prev.filter((p) => p.id !== localPhoto.id));
+          onGalleryError?.(msg);
         }
       }
-
-      return remaining;
-    });
+    }
   }
 
-  function handleGalleryPhotoSetCover(photoId: string) {
-    setGallery((prev) => {
-      const photo = prev.find((p) => p.id === photoId);
-      if (!photo) return prev;
-      return prev.map((p) =>
-        p.colorId === photo.colorId ? { ...p, isCover: p.id === photoId } : p
-      );
-    });
+  async function handleGalleryPhotoRemove(photoId: string) {
+    // Foto local (não chegou ao banco): remove apenas do estado
+    if (photoId.startsWith("local-")) {
+      setGallery((prev) => {
+        const photo = prev.find((p) => p.id === photoId);
+        if (!photo) return prev;
+        if (photo.file) revokeImagePreview(photo.previewUrl);
+
+        const remaining = prev.filter((p) => p.id !== photoId);
+        if (photo.isCover) {
+          const forColor = remaining
+            .filter((p) => p.colorId === photo.colorId)
+            .sort((a, b) => a.position - b.position);
+          if (forColor.length > 0) {
+            return remaining.map((p) =>
+              p.id === forColor[0].id ? { ...p, isCover: true } : p
+            );
+          }
+        }
+        return remaining;
+      });
+      return;
+    }
+
+    // Foto real: chama DELETE e atualiza estado em sucesso
+    try {
+      const result = await deleteGalleryPhoto(productId!, photoId);
+      setGallery((prev) => {
+        const remaining = prev.filter((p) => p.id !== photoId);
+        if (result.promoted_cover_id) {
+          return remaining.map((p) =>
+            p.id === result.promoted_cover_id ? { ...p, isCover: true } : p
+          );
+        }
+        return remaining;
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao remover foto";
+      onGalleryError?.(msg);
+    }
+  }
+
+  async function handleGalleryPhotoSetCover(photoId: string) {
+    // Foto local: atualiza apenas o estado
+    if (photoId.startsWith("local-")) {
+      setGallery((prev) => {
+        const photo = prev.find((p) => p.id === photoId);
+        if (!photo) return prev;
+        return prev.map((p) =>
+          p.colorId === photo.colorId ? { ...p, isCover: p.id === photoId } : p
+        );
+      });
+      return;
+    }
+
+    // Foto real: chama PATCH set_cover e atualiza estado em sucesso
+    try {
+      await setCoverGalleryPhoto(productId!, photoId);
+      setGallery((prev) => {
+        const photo = prev.find((p) => p.id === photoId);
+        if (!photo) return prev;
+        return prev.map((p) =>
+          p.colorId === photo.colorId ? { ...p, isCover: p.id === photoId } : p
+        );
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao definir capa";
+      onGalleryError?.(msg);
+    }
   }
 
   // Limpa galeria quando uma cor é removida das variantes
@@ -528,7 +602,7 @@ export function ProductForm({
     }
 
     setSubmitError(null);
-    await onSubmit(form);
+    await onSubmit({ ...form, gallery });
   }
 
   // Agrupa variantes por cor para renderização
