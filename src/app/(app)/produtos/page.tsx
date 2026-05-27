@@ -228,7 +228,7 @@ export default function ProdutosPage() {
 
       {/* Lista de produtos */}
       {loading ? (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           {[1, 2, 3, 4].map((i) => (
             <SkeletonCard key={i} />
           ))}
@@ -240,7 +240,7 @@ export default function ProdutosPage() {
           description={search ? "Tente buscar por outro termo." : "Comece cadastrando seu primeiro produto."}
         />
       ) : (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           {products.map((product) => (
             <ProductCard key={product.id} {...product} />
           ))}

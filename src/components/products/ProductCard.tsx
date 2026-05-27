@@ -73,7 +73,7 @@ export function ProductCard({
               src={photoUrl}
               alt={name}
               fill
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
               className="object-cover"
             />
           ) : (
@@ -90,26 +90,19 @@ export function ProductCard({
         </div>
 
         {/* Informações */}
-        <div className="p-4 space-y-2">
-          <h3 className="font-semibold text-foreground text-base leading-tight truncate">
+        <div className="p-3 space-y-2">
+          <h3 className="font-semibold text-foreground text-sm leading-tight truncate">
             {name}
           </h3>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-xs">
               {category}
             </Badge>
-            <Badge variant="outline" className="text-xs">
-              {model}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>SKU: {skuBase}</span>
-            <span className="font-medium text-foreground">{totalPieces} pç</span>
           </div>
 
           {/* Lista de variantes: Cor + Tamanho + Quantidade */}
           {variants && variants.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1">
+            <div className="flex flex-wrap gap-1 pt-1">
               {variants.map((v, i) => {
                 const isLow = v.quantity > 0 && v.quantity <= 4;
                 const isEmpty = v.quantity === 0;
