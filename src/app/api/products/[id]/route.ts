@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase-server'
 import { requireAuth } from '@/lib/auth'
 import { generateUniqueSlug } from '@/lib/slug'
+import { validatePublish } from '@/lib/publish-validator'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -97,7 +98,7 @@ export async function PATCH(
     const updates = await request.json()
 
     // --- Campos escalares do produto ---
-    const allowedFields = ['name', 'category', 'model', 'cost_brl', 'photo_url', 'price_brl', 'description', 'display_order']
+    const allowedFields = ['name', 'category', 'model', 'cost_brl', 'photo_url', 'price_brl', 'description', 'display_order', 'is_published']
     const filteredUpdates: Record<string, unknown> = {}
 
     for (const key of allowedFields) {
@@ -119,6 +120,40 @@ export async function PATCH(
         { error: 'Nenhum campo válido para atualização' },
         { status: 400 }
       )
+    }
+
+    // --- Validação de publicação ---
+    if ('is_published' in filteredUpdates && filteredUpdates.is_published === true) {
+      const [priceRes, variantsRes, imagesRes] = await Promise.all([
+        supabase.from('products').select('price_brl, published_at').eq('id', id).single(),
+        supabase.from('variants').select('quantity').eq('product_id', id),
+        supabase.from('product_images').select('id', { count: 'exact', head: true }).eq('product_id', id),
+      ])
+
+      const priceBrl = ('price_brl' in filteredUpdates
+        ? filteredUpdates.price_brl
+        : priceRes.data?.price_brl) as number | null | undefined
+
+      const variantsList = hasVariants
+        ? (updates.variants as VariantSnapshot[]).map((v: VariantSnapshot) => ({ quantity: v.quantity }))
+        : ((variantsRes.data ?? []) as Array<{ quantity: number }>)
+
+      const galleryCount = imagesRes.count ?? 0
+
+      const { canPublish, missing } = validatePublish({ priceBrl, variants: variantsList, galleryCount })
+
+      if (!canPublish) {
+        return NextResponse.json(
+          { error: `Não é possível publicar. Faltando: ${missing.join(', ')}.` },
+          { status: 400 }
+        )
+      }
+
+      // Define published_at apenas no primeiro publish
+      const currentPublishedAt = priceRes.data?.published_at ?? null
+      if (!currentPublishedAt) {
+        filteredUpdates.published_at = new Date().toISOString()
+      }
     }
 
     // --- Atualiza campos escalares do produto ---

@@ -172,6 +172,7 @@ export default function ProductDetailPage() {
       const parsedOrder = parseInt(data.displayOrder, 10);
       updates.display_order = Number.isFinite(parsedOrder) ? parsedOrder : 0;
       updates.variants = prepareVariantsForApi(data.variants);
+      updates.is_published = data.isPublished ?? false;
 
       const res = await fetch(`/api/products/${productId}`, {
         method: "PATCH",
@@ -339,6 +340,8 @@ export default function ProductDetailPage() {
           displayOrder: product.display_order != null ? String(product.display_order) : '0',
           photoUrl: product.photo_url || undefined,
           variants: product.variants || [],
+          isPublished: product.is_published ?? false,
+          publishedAt: product.published_at ?? null,
         }}
         initialGallery={initialGallery}
         productId={product.id}

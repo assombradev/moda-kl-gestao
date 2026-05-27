@@ -64,36 +64,70 @@ export default function NovoProdutoPage() {
         body: formData,
       });
 
-      if (res.ok) {
-        const result = await res.json();
-        const newProductId = result.product?.id;
-
-        // Upload sequencial das fotos de galeria após produto criado
-        const photos = (data.gallery ?? []).filter((p) => p.file !== null);
-        let failedCount = 0;
-
-        if (newProductId && photos.length > 0) {
-          for (const photo of photos) {
-            try {
-              await uploadGalleryPhoto(newProductId, photo.colorId, photo.file!);
-            } catch {
-              failedCount++;
-            }
-          }
-        }
-
-        setCreatedSKUs(result.skus || []);
-
-        if (failedCount > 0) {
-          setErrorMessage(
-            `Produto criado com sucesso, mas ${failedCount} ${failedCount === 1 ? "foto falhou" : "fotos falharam"} ao subir. Acesse a edição do produto para tentar novamente.`
-          );
-        }
-
-        setShowSuccess(true);
-      } else {
+      if (!res.ok) {
         const err = await res.json();
         alert(err.error || "Erro ao cadastrar produto");
+        return;
+      }
+
+      const result = await res.json();
+      const newProductId = result.product?.id;
+
+      // Upload sequencial das fotos de galeria após produto criado
+      const photos = (data.gallery ?? []).filter((p) => p.file !== null);
+      let photoFailedCount = 0;
+
+      if (newProductId && photos.length > 0) {
+        for (const photo of photos) {
+          try {
+            await uploadGalleryPhoto(newProductId, photo.colorId, photo.file!);
+          } catch {
+            photoFailedCount++;
+          }
+        }
+      }
+
+      // Se a dona ativou publicação, faz PATCH agora (após fotos subirem)
+      let publishFailed = false;
+      let publishErrorMessage: string | null = null;
+
+      if (newProductId && data.isPublished) {
+        try {
+          const patchRes = await fetch(`/api/products/${newProductId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_published: true }),
+          });
+          if (!patchRes.ok) {
+            publishFailed = true;
+            const err = await patchRes.json();
+            publishErrorMessage = err.error || "Erro ao publicar";
+          }
+        } catch {
+          publishFailed = true;
+          publishErrorMessage = "Erro de rede ao publicar";
+        }
+      }
+
+      setCreatedSKUs(result.skus || []);
+
+      if (photoFailedCount > 0 || publishFailed) {
+        const parts: string[] = [];
+        if (photoFailedCount > 0) {
+          parts.push(
+            `${photoFailedCount} ${photoFailedCount === 1 ? "foto falhou" : "fotos falharam"} ao subir`
+          );
+        }
+        if (publishFailed) {
+          parts.push(
+            `publicação não foi ativada${publishErrorMessage ? ` (${publishErrorMessage})` : ""}`
+          );
+        }
+        setErrorMessage(
+          `Produto criado, mas ${parts.join(" e ")}. Acesse a edição do produto para resolver.`
+        );
+      } else {
+        setShowSuccess(true);
       }
     } catch (err) {
       console.error("Erro ao cadastrar:", err);

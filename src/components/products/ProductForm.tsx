@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Accordion } from "@/components/ui/accordion";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Popover,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { VariantColorGroup } from "@/components/products/VariantColorGroup";
 import { GalleryColorBlock } from "@/components/products/GalleryColorBlock";
+import { validatePublish } from "@/lib/publish-validator";
 import { SIZES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +52,8 @@ export interface ProductFormData {
   photoFile?: File;
   variants: Variant[];
   gallery?: GalleryPhoto[];
+  isPublished?: boolean;
+  publishedAt?: string | null;
 }
 
 interface ColorProp {
@@ -215,6 +219,7 @@ export function ProductForm({
       description: "",
       displayOrder: "0",
       variants: [],
+      isPublished: false,
     }
   );
   const [photoPreview, setPhotoPreview] = useState<string | null>(
@@ -438,6 +443,10 @@ export function ProductForm({
     setAddColorOpen(false);
   }
 
+  function handlePublishToggle(checked: boolean) {
+    setForm((prev) => ({ ...prev, isPublished: checked }));
+  }
+
   // --- Handlers de galeria ---
 
   async function handleGalleryPhotosAdded(colorId: string, files: File[]) {
@@ -616,12 +625,26 @@ export function ProductForm({
   // Cores ativas para a galeria (deduplicado, mesma ordem de inserção)
   const activeColors = activeColorsForGallery(form.variants, addedEmptyColors, colors);
 
+  const galleryCount = gallery.length;
+  const { canPublish, missing } = validatePublish({
+    priceBrl: form.price ? parseFloat(form.price.replace(',', '.')) : null,
+    variants: form.variants,
+    galleryCount,
+  });
+
   // Cores disponíveis no popover: exclui as que já estão no produto
   const existingColorIds = new Set(currentGroups.map((g) => g.colorId));
   const availableColors = colors.filter((c) => !existingColorIds.has(c.id));
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-8">
+      {form.isPublished && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 w-fit text-xs font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+          No catálogo
+        </div>
+      )}
+
       <Tabs defaultValue="internos">
         <TabsList className="w-full">
           <TabsTrigger value="internos">Dados internos</TabsTrigger>
@@ -949,6 +972,27 @@ export function ProductForm({
           <p className="text-sm text-muted-foreground">
             Campos que aparecerão no catálogo público da loja.
           </p>
+
+          {/* Publicação */}
+          <div className="bg-card rounded-2xl border border-border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-foreground">Publicar no catálogo</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {form.isPublished
+                    ? "Produto visível no catálogo público."
+                    : canPublish
+                    ? "Disponível para publicação."
+                    : `Faltando: ${missing.join(", ")}.`}
+                </p>
+              </div>
+              <Switch
+                checked={form.isPublished ?? false}
+                onCheckedChange={handlePublishToggle}
+                disabled={!canPublish && !form.isPublished}
+              />
+            </div>
+          </div>
 
           {/* Preço de venda */}
           <div className="space-y-2">
